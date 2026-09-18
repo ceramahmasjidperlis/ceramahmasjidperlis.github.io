@@ -46,6 +46,7 @@ python3 tests/test_federate.py
 python3 tests/test_a11y.py
 python3 tests/test_perf.py
 python3 tests/test_security.py
+python3 tests/test_data_entry_templates.py
 node tests/test_*.js                    # JS module tests
 python3 tools/perf_report.py            # performance budget gate
 python3 tools/security_audit.py         # security audit

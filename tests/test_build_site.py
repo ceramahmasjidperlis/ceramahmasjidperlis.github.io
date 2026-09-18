@@ -6,6 +6,7 @@ Usage:
 """
 
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -164,7 +165,23 @@ def test_sitemap_and_robots():
     assert "https://example.com/masjids.html" in sitemap
     assert "https://example.com/event/evt-20260809-001/" in sitemap
     assert "https://example.com/masjid/masjid-alwi/" in sitemap
-    assert sitemap.count("<url>") == 3 + 18 + 5, sitemap.count("<url>")  # 3 top pages + 18 events + 5 masjids
+    # sitemap must list exactly the top pages plus every generated page —
+    # derived from the build output so data growth never breaks this test
+    locs = set(re.findall(r"<loc>(.*?)</loc>", sitemap))
+    expected = {
+        SITE_URL + "/",
+        SITE_URL + "/events.html",
+        SITE_URL + "/masjids.html",
+    }
+    expected |= {
+        "{}/event/{}/".format(SITE_URL, d.name)
+        for d in (out / "event").iterdir() if (d / "index.html").is_file()
+    }
+    expected |= {
+        "{}/masjid/{}/".format(SITE_URL, d.name)
+        for d in (out / "masjid").iterdir() if (d / "index.html").is_file()
+    }
+    assert locs == expected, locs ^ expected
 
     robots = (out / "robots.txt").read_text(encoding="utf-8")
     assert "User-agent: *" in robots
@@ -228,7 +245,16 @@ def test_invalid_data_fails_build():
 
 def test_no_site_url_falls_back_to_root_relative():
     out = make_dir("no-url")
-    result = run(out, site_url="")
+    # Build from a temp data copy with site_url blanked: base_url() falls
+    # back to settings.json, so "" must be cleared there too for the
+    # genuinely URL-less path (root-relative canonicals, no Sitemap line).
+    data_dir = make_dir("no-url-data")
+    for src in DATA.glob("*.json"):
+        shutil.copy(src, data_dir / src.name)
+    settings = json.loads((data_dir / "settings.json").read_text(encoding="utf-8"))
+    settings["site_url"] = ""
+    write_json(data_dir / "settings.json", settings)
+    result = run(out, site_url="", data_dir=data_dir)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "site_url" in result.stderr

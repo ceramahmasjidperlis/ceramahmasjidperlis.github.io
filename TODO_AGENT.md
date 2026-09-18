@@ -1860,3 +1860,39 @@ Known issues:
     build_site.py; update both together if the theme logic changes.
 Next stage: none required. Future ideas are intentionally deferred.
 ```
+
+---
+
+# Session Report — 2026-09-18 (31) — Fixes 1–4 from repo analysis
+
+```text
+Current stage: post-MVP maintenance.
+Completed:
+  - Fix 1: test_no_site_url_falls_back_to_root_relative now builds from a
+    temp copy of data/ with settings.site_url blanked (base_url() falls back
+    to settings, so "" must be cleared there for the genuinely URL-less path).
+    Test-only change; no generator/CLI change.
+  - Fix 2: deleted stale Todoagent.md (45KB early-planning draft) per user
+    decision, overriding the Stage 21 "left untouched" note.
+  - Fix 3: sitemap assertion is now data-driven — <loc> set compared against
+    the 3 top pages plus every generated out/event/*/ and out/masjid/*/
+    page, so data growth never breaks it (previously hand-edited twice).
+  - Fix 4: new tests/test_data_entry_templates.py (3 tests: exact CSV
+    headers, config.json wiring, header↔config-columns cross-check);
+    registered in .github/workflows/validate.yml and CONTRIBUTING.md
+    (both enumerate suites explicitly).
+Tests:
+  - test_build_site 14/14 (was 13/14 — red test fixed); new template suite
+    3/3; validate 8/8, admin 7/7, import 9/9, federate 7/7, a11y 3/3,
+    perf 6/6, security 7/7; node suites events 37, masjids 12, share 12,
+    ics 21, maps 9, a11y 4 — all passing; validate.yml parses.
+Files changed:
+  - tests/test_build_site.py, tests/test_data_entry_templates.py (new),
+    .github/workflows/validate.yml, CONTRIBUTING.md, TODO_AGENT.md;
+    deleted Todoagent.md.
+Known issues:
+  - None. Remaining analysis items (cron rebuild, perf headroom note,
+    theme drift guard, 404/og:image/GCal/Dikemaskini/badges, real data)
+    intentionally deferred.
+Next stage: none required. Future ideas are intentionally deferred.
+```
