@@ -50,6 +50,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -97,6 +98,9 @@ def _expand_env(value):
     return os.path.expandvars(str(value)) if isinstance(value, str) else value
 
 
+MAX_FEED_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
 def fetch_json_document(feed, config_dir):
     """Return (document, source_label) for a local-json / json-url feed."""
     ftype = str(feed.get("type") or "").strip().lower()
@@ -104,13 +108,19 @@ def fetch_json_document(feed, config_dir):
         url = str(feed.get("url") or "").strip()
         if not url:
             raise RuntimeError(f"feed {feed.get('name', '?')}: 'url' is required for {ftype}.")
+        scheme = urlparse(url).scheme.lower()
+        if scheme not in ("http", "https"):
+            raise RuntimeError(f"feed {feed.get('name', '?')}: unsupported URL scheme {scheme!r}.")
         headers = {}
         for key, value in (feed.get("headers") or {}).items():
             headers[key] = _expand_env(value)
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=int(feed.get("timeout") or 30)) as resp:
-                return json.loads(resp.read().decode("utf-8")), url
+                raw = resp.read(MAX_FEED_BYTES + 1)
+                if len(raw) > MAX_FEED_BYTES:
+                    raise RuntimeError(f"feed {feed.get('name', '?')}: response exceeds {MAX_FEED_BYTES} bytes.")
+                return json.loads(raw.decode("utf-8")), url
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"cannot fetch {url}: HTTP {exc.code}")
         except OSError as exc:

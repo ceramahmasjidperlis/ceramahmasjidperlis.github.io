@@ -25,6 +25,7 @@
     function wire() {
       var b = document.getElementById("theme-toggle");
       if (!b) return;
+      b.setAttribute("aria-pressed", document.documentElement.getAttribute("data-theme") === "dark" ? "true" : "false");
       b.addEventListener("click", function () {
         var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
         apply(next);
@@ -44,13 +45,15 @@
 
 
 
+
 <!-- build-site-seo -->
-  <link rel="canonical" href="https://ben-kodbiz.github.io/masjidperlis/">
+  <link rel="canonical" href="https://ceramahmasjidperlis.github.io/">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Masjid Events Perlis">
   <meta property="og:description" content="Program dan aktiviti masjid-masjid di Perlis: kuliyyah, ceramah, tazkirah dan banyak lagi.">
-  <meta property="og:url" content="https://ben-kodbiz.github.io/masjidperlis/">
+  <meta property="og:url" content="https://ceramahmasjidperlis.github.io/">
 <!-- /build-site-seo -->
+
 
 
   </head>

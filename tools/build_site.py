@@ -326,6 +326,7 @@ THEME_SCRIPT = """
     function wire() {
       var b = document.getElementById("theme-toggle");
       if (!b) return;
+      b.setAttribute("aria-pressed", document.documentElement.getAttribute("data-theme") === "dark" ? "true" : "false");
       b.addEventListener("click", function () {
         var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
         apply(next);
@@ -426,7 +427,11 @@ def wrap_page(page, body_html, scripts, seo_meta, base_prefix="../../"):
 def jsonld_block(jsonld_text):
     if not jsonld_text:
         return ""
-    return '  <script type="application/ld+json">{}</script>\n'.format(jsonld_text)
+    safe = (jsonld_text
+            .replace("&", "\\u0026")
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e"))
+    return '  <script type="application/ld+json">{}</script>\n'.format(safe)
 
 
 def seo(title, description, canonical, og_type, og_title, og_url, body_data="", jsonld=""):

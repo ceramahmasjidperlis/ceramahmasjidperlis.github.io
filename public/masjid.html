@@ -25,6 +25,7 @@
     function wire() {
       var b = document.getElementById("theme-toggle");
       if (!b) return;
+      b.setAttribute("aria-pressed", document.documentElement.getAttribute("data-theme") === "dark" ? "true" : "false");
       b.addEventListener("click", function () {
         var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
         apply(next);

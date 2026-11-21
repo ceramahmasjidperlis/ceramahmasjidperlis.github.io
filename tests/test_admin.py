@@ -285,7 +285,10 @@ def test_publish_mirrors_data():
         assert resp["ok"] is True
 
         for name in DATA_FILES:
-            assert (admin.public_dir / name).is_file(), f"missing mirror: {name}"
+            if name == "editors.json":
+                assert not (admin.public_dir / name).exists(), "editors.json must not be mirrored publicly"
+            else:
+                assert (admin.public_dir / name).is_file(), f"missing mirror: {name}"
 
         mirror = json.loads((admin.public_dir / "masjids.json").read_text("utf-8"))
         assert any(m["id"] == "masjid-publish" for m in mirror)

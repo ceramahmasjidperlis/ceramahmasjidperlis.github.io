@@ -43,8 +43,11 @@ Endpoints (all JSON):
 
 import argparse
 import json
+import os
 import re
 import sys
+import tempfile
+import threading
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -54,9 +57,14 @@ from validate_data import validate_directory
 import build_site
 
 ROOT = Path(__file__).resolve().parent.parent
+PUBLIC_ROOT = ROOT / "public"
+ADMIN_ROOT = ROOT / "admin"
 
 DATA_FILES = ("masjids.json", "events.json", "speakers.json", "categories.json",
               "settings.json", "mukims.json", "editors.json")
+PUBLIC_DATA_FILES = tuple(f for f in DATA_FILES if f != "editors.json")
+MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+_DATA_LOCK = threading.Lock()
 
 VALID_STATUSES = {"draft", "published", "cancelled", "postponed", "completed"}
 VALID_RECURRENCE_TYPES = {"weekly"}
@@ -79,9 +87,20 @@ def read_json(path, fallback):
 
 
 def write_json(path, data):
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2)
-        fh.write("\n")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def slugify(text, fallback=""):
@@ -449,35 +468,39 @@ class DataStore:
         returns a payload on success, or raises _ValidationError / _NotFound.
         On validation failure the data dir is rolled back to its prior state.
         """
-        self._ensure_files()
-        snapshot = self._snapshot()
-        data = self.read_all()
-        try:
-            payload = apply_fn(data)
-        except (_ValidationError, _NotFound):
-            self._restore(snapshot)
-            raise
-        except KeyError as exc:
-            self._restore(snapshot)
-            return False, [f"missing key: {exc}"]
-        for f in DATA_FILES:
-            write_json(self.paths[f], data[f])
-        errors = self.validate()
-        if errors:
-            self._restore(snapshot)
-            return False, errors
-        return True, payload
+        with _DATA_LOCK:
+            self._ensure_files()
+            snapshot = self._snapshot()
+            data = self.read_all()
+            try:
+                payload = apply_fn(data)
+            except (_ValidationError, _NotFound):
+                self._restore(snapshot)
+                raise
+            except KeyError as exc:
+                self._restore(snapshot)
+                return False, [f"missing key: {exc}"]
+            for f in DATA_FILES:
+                write_json(self.paths[f], data[f])
+            errors = self.validate()
+            if errors:
+                self._restore(snapshot)
+                return False, errors
+            return True, payload
 
     def publish(self):
-        errors = self.validate()
-        if errors:
-            return False, errors
-        self.public_data_dir.mkdir(parents=True, exist_ok=True)
-        for f in DATA_FILES:
-            src = self.paths[f]
-            if src.exists():
-                write_json(self.public_data_dir / f, read_json(src, [] if f != "settings.json" else {}))
-        return True, {}
+        with _DATA_LOCK:
+            errors = self.validate()
+            if errors:
+                return False, errors
+            self.public_data_dir.mkdir(parents=True, exist_ok=True)
+            for f in PUBLIC_DATA_FILES:
+                src = self.paths[f]
+                if src.exists():
+                    write_json(self.public_data_dir / f, read_json(src, [] if f != "settings.json" else {}))
+            # Never expose admin-only editor metadata (emails/roles) on the public site.
+            (self.public_data_dir / "editors.json").unlink(missing_ok=True)
+            return True, {}
 
 
 def store():
@@ -497,11 +520,13 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(length or 0)
         except ValueError:
-            length = 0
+            return None
+        if length < 0 or length > MAX_BODY_BYTES:
+            return None
         raw = self.rfile.read(length) if length else b"{}"
         try:
             return json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             return None
 
     def _send_json(self, status, payload):
@@ -522,7 +547,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_file(self, rel_path):
         target = (ROOT / rel_path).resolve()
-        if not str(target).startswith(str(ROOT)):
+        if not (target.is_relative_to(PUBLIC_ROOT) or target.is_relative_to(ADMIN_ROOT)):
             self._send_json(403, {"error": "forbidden"})
             return
         if target.is_dir():
@@ -563,18 +588,19 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["api", "data"]:
             raw = store().read_all()
             return self._send_json(200, {
-                k.split(".json")[0]: v for k, v in raw.items()
+                k.removesuffix(".json"): v for k, v in raw.items()
             })
         if parts == ["api", "validate"]:
             errors = store().validate()
             return self._send_json(200, {"ok": not errors, "problems": errors})
         if len(parts) == 2 and parts[0] in ("masjid", "event"):
-            static = ROOT / parts[0] / parts[1] / "index.html"
+            static = PUBLIC_ROOT / parts[0] / parts[1] / "index.html"
             if not static.is_file():
                 html, _title = self._detail_html(parts[0], parts[1])
                 if html:
                     return self._send_html(200, html)
-        return self._send_file(self.path.lstrip("/"))
+        clean_path = urlparse(self.path).path.lstrip("/")
+        return self._send_file(clean_path)
 
     def do_POST(self):
         parts, _query = self._split()
@@ -769,6 +795,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(400, {"errors": ["request body is not valid JSON."]})
         data = store()
         fname = self._collection(collection)
+        if fname is None:
+            return self._send_json(404, {"error": "not found"})
 
         def apply(all_data):
             coll = all_data[fname]
@@ -900,15 +928,18 @@ class Handler(BaseHTTPRequestHandler):
             title = f"{masjid.get('name') or ''} — {site_name}"
         else:
             return None, None
+        esc_title = build_site.esc(title)
+        esc_desc = build_site.esc(body[:160] or title)
+        esc_canonical = build_site.esc(build_site.page_url("", kind + "/" + rid + "/"))
         html = (
             "<!DOCTYPE html><html lang=\"ms\"><head><meta charset=\"UTF-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
             + build_site.HEAD_META.format(
-                base="../../", description=(body[:160] or title),
-                canonical=build_site.page_url("", kind + "/" + rid + "/"),
+                base="../../", description=esc_desc,
+                canonical=esc_canonical,
                 og_type="article" if kind == "event" else "website",
-                og_title=title, og_description=(body[:160] or title), og_url="",
-                title=title)
+                og_title=esc_title, og_description=esc_desc, og_url="",
+                title=esc_title)
             + "</head><body>" + body + "</body></html>"
         )
         return html, title

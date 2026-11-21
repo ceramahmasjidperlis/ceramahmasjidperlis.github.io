@@ -27,7 +27,10 @@ jobs:
       - name: Sync canonical data into public site
         run: |
           mkdir -p public/data
-          cp data/*.json public/data/
+          for f in masjids events speakers categories settings mukims; do
+            cp "data/${f}.json" "public/data/${f}.json"
+          done
+          rm -f public/data/editors.json
 
       - name: Set up Pages
         uses: actions/configure-pages@v4

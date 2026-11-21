@@ -32,6 +32,15 @@
     return ui.el("p", { class: "vh", role: "status" });
   }
 
+  function debounce(fn, wait) {
+    let timer = null;
+    return function () {
+      const args = arguments;
+      clearTimeout(timer);
+      timer = setTimeout(function () { fn.apply(null, args); }, wait);
+    };
+  }
+
   // ---- Homepage ----
   function renderHome(container, data) {
     const now = ui.todayKL();
@@ -219,7 +228,7 @@
     mukimSel.addEventListener("change", refresh);
     catSel.addEventListener("change", refresh);
     statusSel.addEventListener("change", refresh);
-    searchBox.addEventListener("input", refresh);
+    searchBox.addEventListener("input", debounce(refresh, 120));
     fromDate.addEventListener("change", refresh);
     toDate.addEventListener("change", refresh);
 
@@ -283,7 +292,7 @@
       class: "btn btn-ghost",
       onclick: function () {
         ME.share.copyText(url).then(function (ok) {
-          copyLinkBtn.textContent = ok ? "Pautan disalin" : "Sila salin tapal sendiri";
+          copyLinkBtn.textContent = ok ? "Pautan disalin" : "Sila salin pautan sendiri";
           announce(ok ? "Pautan disalin." : "Penyalinan tidak disokong.");
           setTimeout(function () { copyLinkBtn.textContent = "Salin pautan"; }, 2000);
         });
@@ -353,7 +362,7 @@
       class: "btn",
       onclick: function () {
         ME.ics.downloadIcs(ev, { siteName: (data.settings && data.settings.site_name) || "Masjid Events Perlis" });
-        calBtn.textContent = "Kalendar dimuat turun?";
+        calBtn.textContent = "Kalendar dimuat turun";
         setTimeout(function () { calBtn.textContent = "Tambah ke kalendar (.ics)"; }, 2000);
       }
     }, ["Tambah ke kalendar (.ics)"]);
@@ -413,7 +422,7 @@
         : "Tiada masjid ditemui.";
     }
 
-    qBox.addEventListener("input", refresh);
+    qBox.addEventListener("input", debounce(refresh, 120));
     mukimSel.addEventListener("change", refresh);
     refresh();
   }
@@ -451,7 +460,7 @@
         href: "tel:" + encodeURIComponent(String(masjid.contact).replace(/[^\d+]/g, ""))
       }, ["Hubungi"]));
     }
-    if (masjid.website) {
+    if (masjid.website && /^https?:\/\//i.test(masjid.website)) {
       sub.appendChild(ui.el("a", {
         class: "btn btn-ghost",
         rel: "noopener",
@@ -495,16 +504,18 @@
     ME.data.load()
       .then(function (data) {
         ME.masjids.init(data);
+        const speakerById = Object.create(null);
+        (data.speakers || []).forEach(function (s) { if (s && s.id) speakerById[s.id] = s; });
+        const categoryById = Object.create(null);
+        (data.categories || []).forEach(function (c) { if (c && c.id) categoryById[c.id] = c; });
         ME.speakers = {
           get: function (id) {
-            if (!id) return null;
-            return (data.speakers || []).find(function (s) { return s.id === id; }) || null;
+            return id ? (speakerById[id] || null) : null;
           }
         };
         ME.categories = {
           get: function (id) {
-            if (!id) return null;
-            return (data.categories || []).find(function (c) { return c.id === id; }) || null;
+            return id ? (categoryById[id] || null) : null;
           }
         };
         renderer(app, data);
