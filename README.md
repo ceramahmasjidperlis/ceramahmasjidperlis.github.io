@@ -142,6 +142,7 @@ automatically when this repository is pushed to GitHub (see `deploy.yml`).
 - `DATA_SCHEMA.md` — canonical data format (all files, fields, ID rules, recurrence).
 - `DATA_ENTRY_GUIDE.md` — practical how-to: Google Sheets or local CSV/Excel → live site.
 - `ADMIN_GUIDE.md` — editor workflow: the panel, recurring events, statuses, validate/publish.
+- `PANDUAN_ADMIN.md` — panduan lengkap admin dalam Bahasa Melayu (tambah masjid, penceramah, ceramah/acara, dan terbit ke GitHub Pages).
 - `DEPLOYMENT.md` — GitHub Pages deployment, first-time setup, custom domains, troubleshooting.
 - `SHEET_IMPORT.md` — Google Sheets adapter (no API key).
 - `FEDERATION.md` — multi-feed federation tool.
